@@ -6,9 +6,13 @@ import java.nio.file.Paths;
 
 public class Main {
     public static void main(String[] args) {
+        System.exit(run(args));
+    }
+
+    public static int run(String[] args) {
         if (args.length == 0) {
             imprimirAjuda();
-            System.exit(1);
+            return 1;
         }
 
         try {
@@ -18,7 +22,7 @@ public class Main {
             if (!Files.exists(pasta) || !Files.isDirectory(pasta)) {
                 System.err.println("Erro: A pasta especificada não existe ou não é um diretório: " + args[0]);
                 imprimirAjuda();
-                System.exit(1);
+                return 1;
             }
 
             ModoOrganizacao modo = null;
@@ -32,21 +36,21 @@ public class Main {
                     } else {
                         System.err.println("Erro: A flag --modo requer um valor (tipo, data ou extensao).");
                         imprimirAjuda();
-                        System.exit(1);
+                        return 1;
                     }
                 } else if ("--simular".equals(args[i])) {
                     simular = true;
                 } else {
                     System.err.println("Erro: Argumento desconhecido: " + args[i]);
                     imprimirAjuda();
-                    System.exit(1);
+                    return 1;
                 }
             }
 
             if (modo == null) {
                 System.err.println("Erro: O modo de organização deve ser especificado usando --modo <tipo|data|extensao>.");
                 imprimirAjuda();
-                System.exit(1);
+                return 1;
             }
 
             System.out.println("Iniciando organização de: " + pasta.toAbsolutePath());
@@ -58,14 +62,15 @@ public class Main {
             organizador.organizar(pasta, modo, simular);
 
             System.out.println("Organização concluída com sucesso!");
+            return 0;
 
         } catch (IllegalArgumentException e) {
             System.err.println("Erro de validação: " + e.getMessage());
-            System.exit(1);
+            return 1;
         } catch (Exception e) {
             System.err.println("Erro inesperado durante a execução: " + e.getMessage());
             e.printStackTrace();
-            System.exit(1);
+            return 1;
         }
     }
 
