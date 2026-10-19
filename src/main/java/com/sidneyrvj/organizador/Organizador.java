@@ -3,6 +3,8 @@ package com.sidneyrvj.organizador;
 import java.io.IOException;
 import java.nio.file.*;
 import java.time.LocalDateTime;
+import java.util.*;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class Organizador {
@@ -17,18 +19,26 @@ public class Organizador {
             throw new IllegalArgumentException("A pasta de origem especificada não existe ou não é um diretório: " + sourceDir);
         }
 
-        try (Stream<Path> files = Files.list(sourceDir)) {
-            files.filter(Files::isRegularFile).forEach(file -> {
-                try {
-                    processarArquivo(file, sourceDir, modo, simular);
-                } catch (IOException e) {
-                    System.err.println("Erro ao processar arquivo " + file.getFileName() + ": " + e.getMessage());
-                }
-            });
+        // Coletamos para lista antes de processar para evitar manter a stream do diretório aberta
+        // Isso evita FileSystemException em alguns sistemas operacionais durante o move.
+        List<Path> files;
+        try (Stream<Path> stream = Files.list(sourceDir)) {
+            files = stream.filter(Files::isRegularFile).toList();
+        }
+
+        // Conjunto para rastrear caminhos reservados durante a sessão (especialmente para simulação)
+        Set<Path> reservedPaths = new HashSet<>();
+
+        for (Path file : files) {
+            try {
+                processarArquivo(file, sourceDir, modo, simular, reservedPaths);
+            } catch (IOException e) {
+                System.err.println("Erro ao processar arquivo " + file.getFileName() + ": " + e.getMessage());
+            }
         }
     }
 
-    private void processarArquivo(Path file, Path sourceDir, ModoOrganizacao modo, boolean simular) throws IOException {
+    private void processarArquivo(Path file, Path sourceDir, ModoOrganizacao modo, boolean simular, Set<Path> reservedPaths) throws IOException {
         // 1. Extrair metadados
         String nome = file.getFileName().toString();
         String extensao = extrairExtensao(nome);
@@ -41,8 +51,11 @@ public class Organizador {
         String pastaDestinoNome = classificador.classificar(metadata, modo);
         Path pastaDestino = sourceDir.resolve(pastaDestinoNome);
 
-        // 3. Resolver colisão de nome
-        Path destinoFinal = resolverColisao(pastaDestino, nome);
+        // 3. Resolver colisão de nome (considerando disco e reservas da sessão)
+        Path destinoFinal = resolverColisao(pastaDestino, nome, reservedPaths);
+
+        // Adicionamos ao conjunto de reservas para que próximos arquivos vejam esta reserva
+        reservedPaths.add(destinoFinal);
 
         // 4. Mover ou Simular
         if (simular) {
@@ -55,9 +68,11 @@ public class Organizador {
         }
     }
 
-    private Path resolverColisao(Path pastaDestino, String nomeArquivo) {
+    private Path resolverColisao(Path pastaDestino, String nomeArquivo, Set<Path> reservedPaths) {
         Path destino = pastaDestino.resolve(nomeArquivo);
-        if (!Files.exists(destino)) {
+
+        // Verifica se o caminho já está ocupado no disco OU foi reservado nesta sessão
+        if (!Files.exists(destino) && !reservedPaths.contains(destino)) {
             return destino;
         }
 
@@ -72,7 +87,7 @@ public class Organizador {
         }
 
         int contador = 1;
-        while (Files.exists(destino)) {
+        while (Files.exists(destino) || reservedPaths.contains(destino)) {
             String novoNome = nomeBase + "_" + contador + extensao;
             destino = pastaDestino.resolve(novoNome);
             contador++;
